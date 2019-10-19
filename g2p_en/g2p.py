@@ -27,14 +27,33 @@ except LookupError:
 
 dirname = os.path.dirname(__file__)
 
-def construct_homograph_dictionary():
-    f = os.path.join(dirname,'homographs.en')
+def construct_homograph_dictionary(f):
     homograph2features = dict()
     for line in codecs.open(f, 'r', 'utf8').read().splitlines():
+        if len(line)==0: continue # blank
         if line.startswith("#"): continue # comment
         headword, pron1, pron2, pos1 = line.strip().split("|")
         homograph2features[headword.lower()] = (pron1.split(), pron2.split(), pos1)
     return homograph2features
+
+def kaldi_tokenize(raw_sentence):
+  seq, prev = [],0
+  for m in re.finditer(r'(\w|\’\w|\'\w)+', raw_sentence, re.UNICODE):
+    start, end = m.span()
+    spacer = raw_sentence[prev:start].strip()
+    if len(spacer)>0:
+      seq.append( spacer )
+    word = m.group()
+    #token = kaldi_normalize(word, self.vocab)
+    token = word.lower().replace("’", "'")
+    seq.append( token )
+    prev=end
+  spacer = raw_sentence[prev:].strip()
+  if len(spacer)>0:
+    seq.append( spacer )
+  return seq
+  
+
 
 # def segment(text):
 #     '''
@@ -87,7 +106,10 @@ class G2p(object):
 
         self.cmu = cmudict.dict()
         self.load_variables()
-        self.homograph2features = construct_homograph_dictionary()
+        
+        self.homograph2features = construct_homograph_dictionary(os.path.join(dirname, 'homographs.en'))
+        corrections = construct_homograph_dictionary(os.path.join(dirname, '..', '..', 'gentle-fixes.en'))
+        self.homograph2features.update( corrections )
 
     def load_variables(self):
         self.variables = np.load(os.path.join(dirname,'checkpoint20.npz'))
@@ -177,8 +199,12 @@ class G2p(object):
         text = text.replace("e.g.", "for example")
 
         # tokenization
-        words = word_tokenize(text)
-        tokens = pos_tag(words)  # tuples of (word, tag)
+        #words1 = word_tokenize(text)
+        #print( words1 )
+        words2 = kaldi_tokenize(text)
+        #print( words2 )
+        
+        tokens = pos_tag(words2)  # tuples of (word, tag)
 
         # steps
         prons = []
