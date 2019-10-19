@@ -51,20 +51,39 @@ class G2p(object):
     def __init__(self):
         super().__init__()
         self.graphemes = ["<pad>", "<unk>", "</s>"] + list("abcdefghijklmnopqrstuvwxyz")
-        self.phonemes = ["<pad>", "<unk>", "<s>", "</s>"] + ['AA0', 'AA1', 'AA2', 'AE0', 'AE1', 'AE2', 'AH0', 'AH1', 'AH2', 'AO0',
-                                                             'AO1', 'AO2', 'AW0', 'AW1', 'AW2', 'AY0', 'AY1', 'AY2', 'B', 'CH', 'D', 'DH',
-                                                             'EH0', 'EH1', 'EH2', 'ER0', 'ER1', 'ER2', 'EY0', 'EY1',
-                                                             'EY2', 'F', 'G', 'HH',
-                                                             'IH0', 'IH1', 'IH2', 'IY0', 'IY1', 'IY2', 'JH', 'K', 'L',
-                                                             'M', 'N', 'NG', 'OW0', 'OW1',
-                                                             'OW2', 'OY0', 'OY1', 'OY2', 'P', 'R', 'S', 'SH', 'T', 'TH',
-                                                             'UH0', 'UH1', 'UH2', 'UW',
-                                                             'UW0', 'UW1', 'UW2', 'V', 'W', 'Y', 'Z', 'ZH']
+        self.phonemes = ["<pad>", "<unk>", "<s>", "</s>"] + ['AA0', 'AA1', 'AA2', 
+                                                             'AE0', 'AE1', 'AE2', 
+                                                             'AH0', 'AH1', 'AH2', 
+                                                             'AO0', 'AO1', 'AO2', 
+                                                             'AW0', 'AW1', 'AW2', 
+                                                             'AY0', 'AY1', 'AY2', 
+                                                             'B', 'CH', 'D', 'DH',
+                                                             'EH0', 'EH1', 'EH2', 
+                                                             'ER0', 'ER1', 'ER2', 
+                                                             'EY0', 'EY1', 'EY2', 
+                                                             'F', 'G', 'HH',
+                                                             'IH0', 'IH1', 'IH2', 
+                                                             'IY0', 'IY1', 'IY2', 
+                                                             'JH', 'K', 'L',
+                                                             'M', 'N', 'NG', 
+                                                             'OW0', 'OW1', 'OW2', 
+                                                             'OY0', 'OY1', 'OY2', 
+                                                             'P', 'R', 'S', 'SH', 'T', 'TH',
+                                                             'UH0', 'UH1', 'UH2', 
+                                                             'UW',
+                                                             'UW0', 'UW1', 'UW2', 
+                                                             'V', 'W', 'Y', 'Z', 'ZH']
+                                                             
+        self.tokens = self.phonemes + ['<">', '<->', '<,>', '<.>', '<;>', '< >', ]
+                                                             
         self.g2idx = {g: idx for idx, g in enumerate(self.graphemes)}
         self.idx2g = {idx: g for idx, g in enumerate(self.graphemes)}
 
         self.p2idx = {p: idx for idx, p in enumerate(self.phonemes)}
         self.idx2p = {idx: p for idx, p in enumerate(self.phonemes)}
+
+        self.tok2idx = {t: idx for idx, t in enumerate(self.tokens)}
+        self.idx2tok = {idx: t for idx, t in enumerate(self.tokens)}
 
         self.cmu = cmudict.dict()
         self.load_variables()
@@ -118,7 +137,6 @@ class G2p(object):
         chars = list(word) + ["</s>"]
         x = [self.g2idx.get(char, self.g2idx["<unk>"]) for char in chars]
         x = np.take(self.enc_emb, np.expand_dims(x, 0), axis=0)
-
         return x
 
     def predict(self, word):
@@ -151,7 +169,10 @@ class G2p(object):
         text = ''.join(char for char in unicodedata.normalize('NFD', text)
                        if unicodedata.category(char) != 'Mn')  # Strip accents
         text = text.lower()
-        text = re.sub("[^ a-z'.,?!\-]", "", text)
+        #text = re.sub("[^ a-z'.,?!\-]", "", text)
+        text = re.sub("[^ a-z'.,?!\-;:\"]", "", text)   # mdda
+        #text = re.sub("([a-z])\-([a-z])", r"\1 - \2", text)   # mdda 'hot-shot' -> 'hot - shot'
+        text = re.sub("([a-z])\-([a-z])", r"\1 \2", text)   # mdda    'hot-shot' -> 'hot shot'
         text = text.replace("i.e.", "that is")
         text = text.replace("e.g.", "for example")
 
@@ -176,10 +197,21 @@ class G2p(object):
             else: # predict for oov
                 pron = self.predict(word)
 
-            prons.extend(pron)
-            prons.extend([" "])
+            #prons.extend(pron)  #mdda
+            #prons.extend([" "]) #mdda
+            prons.append( (word, pron) )   #mdda
 
-        return prons[:-1]
+        #return prons[:-1]   #mdda
+        return prons         #mdda
+
+    def silence_to_token(self, span):
+      #print(f"span='{span:s}' : {start:d}-{end:d} '{t:s}'")
+      #print(f"span='{span:s}'")
+      for special in '"-,.;':  # This returns early depending on first symbol found
+        if special in span:
+          return '<'+special+'>'
+      return '< >'
+
 
 if __name__ == '__main__':
     texts = ["I have $250 in my pocket.", # number -> spell-out
@@ -187,7 +219,4 @@ if __name__ == '__main__':
              "I refuse to collect the refuse around here.", # homograph
              "I'm an activationist."] # newly coined word
     g2p = G2p()
-    for text in texts:
-        out = g2p(text)
-        print(out)
-
+    
